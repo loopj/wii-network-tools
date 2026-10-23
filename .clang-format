@@ -24,11 +24,11 @@ IncludeCategories:
   - Regex: '^[<"][^/]+[>"]$'
     Priority: 1
 
-  # 2) Exactly ONE slash, e.g. <joybus/joybus.h>
+  # 2) Exactly ONE slash, e.g. <ogc/console.h>
   - Regex: '^[<"][^/]+/[^/]+[>"]$'
     Priority: 2
 
-  # 3) TWO OR MORE slashes, e.g. <joybus/backend/gecko.h>
+  # 3) TWO OR MORE slashes, e.g. <ogc/machine/processor.h>
   - Regex: '^[<"].*/.*/.*[>"]$'
     Priority: 3
 

@@ -1,30 +1,34 @@
 ![](icon.png)
 
-# Wii Network Settings Homebrew
+# Wii Network Tools
 
-Wii homebrew for editing network connection profiles. For systems where you can't (or don't want to) use the System Menu.
+Wii homebrew for editing and testing network connection profiles.
 
 ![](demo.gif)
 
+## Features
+
+- *Connection Settings* - connection editing for systems where the System Menu isn't available
+- *Network Tests* - DNS, TCP, UDP, and throughput (iperf3) tests
+- *IOS Module Tests* - various test suites that check conformance with the stock SO and WD IOS modules
+
 ## Installing
 
-Download the [latest release](https://github.com/loopj/wii-network-settings/releases/latest) and unzip it, then Copy the `apps` folder to the root of your USB drive / SD card.
+Download the [latest release](https://github.com/loopj/wii-network-tools/releases/latest) and unzip it, then copy the `apps` folder to the root of your USB drive or SD card.
 
-## Controls
+To test the network the way a game uses it, build the disc image and launch it from a USB loader instead. It then runs on the IOS the loader provides, and it keeps the iperf3 server in its own save.
 
-Works with both Wii Remotes and GameCube controllers.
+## USB Gecko
 
-| Action                | Wii Remote | GameCube        |
-| --------------------- | ---------- | --------------- |
-| Move                  | D-pad      | D-pad or stick  |
-| Select or type        | A          | A               |
-| Back or delete        | B          | B               |
-| Finish typing         | Plus       | Start           |
-| Shift                 | Minus      | Y               |
-| Cancel typing or exit | Home       | Z               |
+With a USB Gecko in memory card slot B, every test result is also logged to USB Gecko.
 
 ## Building
 
-Install devkitPPC and libogc, then run `make` with `DEVKITPPC` set.
+Install devkitPPC and libogc from devkitPro, and optionally `wit` from Wiimms ISO Tools to build a disc image.
 
-Running `make dist` will build a Homebrew Channel folder under `dist/apps/wii-network-settings` with `boot.dol`, `meta.xml` and `icon.png`.
+```bash
+cmake -B build
+cmake --build build
+```
+
+Homebrew is built to `build/homebrew/apps/wii-network-tools`, disc image is built to `build/NETE01.wbfs`.

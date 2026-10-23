@@ -1,111 +1,190 @@
-#include "input.h"
+#include <stdbool.h>
+#include <stdint.h>
 
 #include <gccore.h>
+#include <ogc/lwp_watchdog.h>
 #include <wiiuse/wpad.h>
 
-// Frames a direction is held before it starts repeating, and between repeats
-#define REPEAT_DELAY 20
-#define REPEAT_RATE 4
+#include "input.h"
+
+// Time a direction is held before it starts repeating, in milliseconds
+#define REPEAT_DELAY_MS 333
+
+// Time between repeats of a held direction, in milliseconds
+#define REPEAT_INTERVAL_MS 67
 
 // GameCube stick deflection that counts as a direction
 #define STICK_THRESHOLD 40
 
+// Buttons that repeat while held
 #define DIRECTIONS (INPUT_UP | INPUT_DOWN | INPUT_LEFT | INPUT_RIGHT)
 
-static u32 prev_held;
-static int held_frames;
+// Set by the power buttons and read from the main flow, since the callbacks run in interrupts
+static volatile bool power_pressed;
+
+// Buttons held at the last read
+static uint32_t previous_held;
+
+// When the held directions next repeat, in ticks
+static u64 next_repeat;
+
+// The last press came from a GameCube controller
+static bool gamecube_last;
+
+// Note a press of the console's power button
+static void handle_power_button(void)
+{
+  power_pressed = true;
+}
+
+// Note a press of a Wii Remote's power button
+static void handle_wpad_power_button(s32 channel)
+{
+  (void)channel;
+  power_pressed = true;
+}
+
+// Map Wii Remote buttons onto the menu buttons
+static uint32_t map_wpad_buttons(u32 wpad)
+{
+  uint32_t buttons = 0;
+  if (wpad & WPAD_BUTTON_UP)
+    buttons |= INPUT_UP;
+  if (wpad & WPAD_BUTTON_DOWN)
+    buttons |= INPUT_DOWN;
+  if (wpad & WPAD_BUTTON_LEFT)
+    buttons |= INPUT_LEFT;
+  if (wpad & WPAD_BUTTON_RIGHT)
+    buttons |= INPUT_RIGHT;
+  if (wpad & WPAD_BUTTON_A)
+    buttons |= INPUT_A;
+  if (wpad & WPAD_BUTTON_B)
+    buttons |= INPUT_B;
+  if (wpad & WPAD_BUTTON_HOME)
+    buttons |= INPUT_HOME;
+  if (wpad & WPAD_BUTTON_PLUS)
+    buttons |= INPUT_START;
+  if (wpad & WPAD_BUTTON_MINUS)
+    buttons |= INPUT_SHIFT;
+
+  return buttons;
+}
+
+// Map GameCube controller buttons onto the menu buttons, with the main stick doubling as the D-pad
+static uint32_t map_pad_buttons(u16 pad, s8 x, s8 y)
+{
+  uint32_t buttons = 0;
+  if ((pad & PAD_BUTTON_UP) || y > STICK_THRESHOLD)
+    buttons |= INPUT_UP;
+  if ((pad & PAD_BUTTON_DOWN) || y < -STICK_THRESHOLD)
+    buttons |= INPUT_DOWN;
+  if ((pad & PAD_BUTTON_LEFT) || x < -STICK_THRESHOLD)
+    buttons |= INPUT_LEFT;
+  if ((pad & PAD_BUTTON_RIGHT) || x > STICK_THRESHOLD)
+    buttons |= INPUT_RIGHT;
+  if (pad & PAD_BUTTON_A)
+    buttons |= INPUT_A;
+  if (pad & PAD_BUTTON_B)
+    buttons |= INPUT_B;
+  if (pad & PAD_TRIGGER_Z)
+    buttons |= INPUT_HOME;
+  if (pad & PAD_BUTTON_START)
+    buttons |= INPUT_START;
+  if (pad & PAD_BUTTON_Y)
+    buttons |= INPUT_SHIFT;
+
+  return buttons;
+}
 
 void input_init(void)
 {
-  PAD_Init();
+  // Start both controller drivers and take both power buttons
   WPAD_Init();
+  PAD_Init();
+  SYS_SetPowerCallback(handle_power_button);
+  WPAD_SetPowerButtonCallback(handle_wpad_power_button);
 }
 
-static u32 map_wpad_buttons(u32 b)
+uint32_t input_pressed(void)
 {
-  u32 r = 0;
-  if (b & WPAD_BUTTON_UP)
-    r |= INPUT_UP;
-  if (b & WPAD_BUTTON_DOWN)
-    r |= INPUT_DOWN;
-  if (b & WPAD_BUTTON_LEFT)
-    r |= INPUT_LEFT;
-  if (b & WPAD_BUTTON_RIGHT)
-    r |= INPUT_RIGHT;
-  if (b & WPAD_BUTTON_A)
-    r |= INPUT_A;
-  if (b & WPAD_BUTTON_B)
-    r |= INPUT_B;
-  if (b & WPAD_BUTTON_PLUS)
-    r |= INPUT_START;
-  if (b & WPAD_BUTTON_MINUS)
-    r |= INPUT_SHIFT;
-  if (b & WPAD_BUTTON_HOME)
-    r |= INPUT_HOME;
-
-  return r;
-}
-
-static u32 map_pad_buttons(u32 b, s8 x, s8 y)
-{
-  // The main stick doubles as a D-pad
-  u32 r = 0;
-  if ((b & PAD_BUTTON_UP) || y > STICK_THRESHOLD)
-    r |= INPUT_UP;
-  if ((b & PAD_BUTTON_DOWN) || y < -STICK_THRESHOLD)
-    r |= INPUT_DOWN;
-  if ((b & PAD_BUTTON_LEFT) || x < -STICK_THRESHOLD)
-    r |= INPUT_LEFT;
-  if ((b & PAD_BUTTON_RIGHT) || x > STICK_THRESHOLD)
-    r |= INPUT_RIGHT;
-  if (b & PAD_BUTTON_A)
-    r |= INPUT_A;
-  if (b & PAD_BUTTON_B)
-    r |= INPUT_B;
-  if (b & PAD_BUTTON_START)
-    r |= INPUT_START;
-  if (b & PAD_BUTTON_Y)
-    r |= INPUT_SHIFT;
-  if (b & PAD_TRIGGER_Z)
-    r |= INPUT_HOME;
-
-  return r;
-}
-
-static u32 poll(void)
-{
-  // Merge every controller into one held set once per frame
-  VIDEO_WaitVSync();
+  // Gather what every controller holds, since a remote that reconnects may not come back as player 1
   WPAD_ScanPads();
   PAD_ScanPads();
-  u32 held = 0;
-  for (int i = 0; i < 4; i++) {
-    held |= map_wpad_buttons(WPAD_ButtonsHeld(i));
-    held |= map_pad_buttons(PAD_ButtonsHeld(i), PAD_StickX(i), PAD_StickY(i));
+  uint32_t wpad_held = 0;
+  uint32_t pad_held  = 0;
+  for (int channel = 0; channel < WPAD_MAX_WIIMOTES; channel++)
+    wpad_held |= map_wpad_buttons(WPAD_ButtonsHeld(channel));
+  for (int port = 0; port < PAD_CHANMAX; port++)
+    pad_held |= map_pad_buttons(PAD_ButtonsHeld(port), PAD_StickX(port), PAD_StickY(port));
+  uint32_t held = wpad_held | pad_held;
+
+  // Count the buttons that went down as presses
+  uint32_t pressed = held & ~previous_held;
+
+  // Note which controller pressed them, for the button hints
+  if (pad_held & pressed) {
+    gamecube_last = true;
+  } else if (wpad_held & pressed) {
+    gamecube_last = false;
   }
 
-  // Count edges as presses
-  u32 pressed = held & ~prev_held;
-
-  // Repeat a direction that has been held long enough
-  if ((held & DIRECTIONS) != 0 && (held & DIRECTIONS) == (prev_held & DIRECTIONS)) {
-    held_frames++;
-    if (held_frames >= REPEAT_DELAY && (held_frames - REPEAT_DELAY) % REPEAT_RATE == 0)
-      pressed |= held & DIRECTIONS;
-  } else {
-    held_frames = 0;
+  // Restart the delay when the held directions change, and repeat them once it runs out
+  u64 now = gettime();
+  if ((held & DIRECTIONS) != (previous_held & DIRECTIONS)) {
+    next_repeat = now + millisecs_to_ticks(REPEAT_DELAY_MS);
+  } else if ((held & DIRECTIONS) && now >= next_repeat) {
+    pressed |= held & DIRECTIONS;
+    next_repeat = now + millisecs_to_ticks(REPEAT_INTERVAL_MS);
   }
 
-  prev_held = held;
+  previous_held = held;
   return pressed;
 }
 
-u32 input_wait_press(void)
+uint32_t input_wait_press(void)
 {
-  u32 b;
+  // Read the controllers once a frame until a button goes down
+  uint32_t pressed;
   do {
-    b = poll();
-  } while (b == 0);
+    VIDEO_WaitVSync();
+    input_check_power_off();
+    pressed = input_pressed();
+  } while (pressed == 0);
 
-  return b;
+  return pressed;
+}
+
+uint32_t input_wait_for(uint32_t buttons)
+{
+  uint32_t pressed;
+  while (!(pressed = input_wait_press() & buttons))
+    ;
+  return pressed;
+}
+
+void input_check_power_off(void)
+{
+  if (power_pressed)
+    SYS_ResetSystem(SYS_POWEROFF, 0, 0);
+}
+
+const char *input_button_name(enum input_button button)
+{
+  switch (button) {
+    case INPUT_HOME:
+      // HOME on the Wii Remote, Z on the GameCube controller
+      return gamecube_last ? "Z" : "HOME";
+
+    case INPUT_START:
+      // Plus on the Wii Remote, START on the GameCube controller
+      return gamecube_last ? "START" : "+";
+
+    case INPUT_SHIFT:
+      // Minus on the Wii Remote, Y on the GameCube controller
+      return gamecube_last ? "Y" : "-";
+
+    default:
+      // Leave out the rest, which both controllers name the same
+      return "";
+  }
 }

@@ -7,7 +7,7 @@ on:
   pull_request:
 
 env:
-  BUNDLE: wii-network-settings-${{ github.ref_type == 'tag' && github.ref_name || 'trunk' }}.zip
+  BUNDLE: wii-network-tools-${{ github.ref_type == 'tag' && github.ref_name || 'trunk' }}.zip
 
 jobs:
   build:
@@ -17,9 +17,14 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Build the Homebrew Channel folder
-        run: make dist
+        run: |
+          cmake -B build
+          cmake --build build --target homebrew
+          mkdir -p dist && cp -R build/homebrew/apps dist/
 
       - name: Zip it with the SD card layout
         run: |

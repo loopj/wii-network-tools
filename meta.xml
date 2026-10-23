@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <app version="1">
-  <name>Network Settings</name>
+  <name>Wii Network Tools</name>
   <coder>loopj</coder>
-  <version>0.1</version>
-  <short_description>Edit the Wii network connections</short_description>
-  <long_description>Edits the three connection profiles the System Menu keeps on NAND. Wired or wireless, SSID, security type and key, DHCP or manual IP and DNS, and MTU. Works with the Wii Remote and the GameCube controller.</long_description>
+  <version>@PROJECT_VERSION@</version>
+  <short_description>Edit and test the Wii network connections</short_description>
+  <long_description>Edits the three connection profiles the System Menu keeps on NAND, wired or wireless, with the SSID, security type and key, DHCP or manual IP and DNS, and MTU. Tests the network a game uses with DNS, TCP, UDP, throughput and reconnects, and checks the socket and Wi-Fi driver requests against the stock modules. Works with the Wii Remote and the GameCube controller.</long_description>
   <ahb_access/>
 </app>
