@@ -122,11 +122,11 @@ void suite_menu_open(const char *title, const struct suite *suites, size_t count
       continue;
     }
 
-    // Run it again on each A, until B
-    do {
-      run_suite(title, suite, connection);
-      screen_draw_buttons("A Run Again   B Back");
-    } while (input_wait_for(INPUT_A | INPUT_B) & INPUT_A);
+    run_suite(title, suite, connection);
+
+    // Keep the results on screen until A
+    screen_draw_buttons("A Back");
+    input_wait_for(INPUT_A);
     profile_request(0);
   }
 }

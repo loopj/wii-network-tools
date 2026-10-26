@@ -180,13 +180,13 @@ void screen_draw_buttons(const char *text)
 
   // Draw the status message once, in its color
   move_to_row(rows - BOTTOM_ROWS);
-  printf(" %s%s" CONSOLE_RESET, status_colors[status_kind], status_text);
+  printf(" %s%-*s" CONSOLE_RESET, status_colors[status_kind], columns - 2, status_text);
   status_text[0] = 0;
 
   // Rule off the hints and draw them on the last row
   move_to_row(rows - 2);
   draw_rule();
-  printf(CONSOLE_GRAY " %s" CONSOLE_RESET, text);
+  printf(CONSOLE_GRAY " %-*s" CONSOLE_RESET, columns - 2, text);
 }
 
 void screen_draw_row_buttons(const struct screen_row *row, const char *action, const char *back)
