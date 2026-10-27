@@ -290,6 +290,15 @@ static void test_gethostbyname_layout(void)
   TEST_ASSERT_NOT_EQUAL(0, read_word(output_buffer + HOSTENT_ADDRESSES));
 }
 
+// Resolve a name whose length leaves out the terminator, which the stock SO answered on 2026-10-27
+static void test_gethostbyname_short_length(void)
+{
+  // Copy the name with its terminator but count only the text
+  strcpy((char *)input_buffer, "example.com");
+  s32 len = (s32)strlen("example.com");
+  TEST_ASSERT_EQUAL_INT(0, IOS_Ioctl(so_fd, SO_GETHOSTBYNAME, input_buffer, len, output_buffer, HOSTENT_LEN));
+}
+
 // Fail to resolve a name that does not exist
 static void test_gethostbyname_unknown_fails(void)
 {
@@ -325,6 +334,27 @@ static void test_getaddrinfo_nodes(void)
   TEST_ASSERT_EQUAL_UINT8(2, address[1]);
   TEST_ASSERT_EQUAL_UINT16(80, (address[2] << 8) | address[3]);
   TEST_ASSERT_NOT_EQUAL(0, read_word(address + 4));
+}
+
+// Resolve a node whose vector leaves out the terminator, which the stock SO answered on 2026-10-27
+static void test_getaddrinfo_short_length(void)
+{
+  // Send the node counted without its terminator, the service and hints for family 2
+  strcpy((char *)input_buffer, "example.com");
+  strcpy((char *)extra_buffer, "80");
+  write_word(extra_buffer_2 + 4, 2);
+  write_word(extra_buffer_2 + 8, 1);
+
+  // Send the three inputs with the output
+  vectors[0].data = input_buffer;
+  vectors[0].len  = 11;
+  vectors[1].data = extra_buffer;
+  vectors[1].len  = 3;
+  vectors[2].data = extra_buffer_2;
+  vectors[2].len  = 0x20;
+  vectors[3].data = output_buffer;
+  vectors[3].len  = ADDRINFO_LEN;
+  TEST_ASSERT_EQUAL_INT(0, IOS_Ioctlv(so_fd, SO_GETADDRINFO, 3, 1, vectors));
 }
 
 // Read an interface option into extra_buffer, with its length in extra_buffer_2
@@ -642,8 +672,10 @@ enum result so_suite_run(void)
   RUN_TEST(test_getnameinfo_numeric);
   RUN_TEST(test_gethostid_nonzero_while_up);
   RUN_TEST(test_gethostbyname_layout);
+  RUN_TEST(test_gethostbyname_short_length);
   RUN_TEST(test_gethostbyname_unknown_fails);
   RUN_TEST(test_getaddrinfo_nodes);
+  RUN_TEST(test_getaddrinfo_short_length);
   RUN_TEST(test_ifopt_family_is_two);
   RUN_TEST(test_ifopt_mac_six_bytes);
   RUN_TEST(test_ifopt_address_block);
