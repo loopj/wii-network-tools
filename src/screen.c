@@ -83,6 +83,18 @@ static int count_visible(const char *text)
   return count;
 }
 
+// Give the whole screen back to printing once a held body is done, leaving the cursor at the top left
+static void release_buttons(void)
+{
+  int columns, rows;
+  CON_GetMetrics(&columns, &rows);
+  if (!buttons_held)
+    return;
+
+  consoleSetWindow(NULL, 1, 1, columns, rows);
+  buttons_held = false;
+}
+
 // The row can take the cursor
 static bool is_selectable(const struct screen_row *row)
 {
@@ -93,7 +105,7 @@ void screen_begin(const char *path, const char *right)
 {
   int columns, rows, column;
   CON_GetMetrics(&columns, &rows);
-  buttons_held = false;
+  release_buttons();
 
   // Clear the screen and move to its top row, below the overscan
   printf("\x1b[2J\x1b[2;0H");
@@ -166,9 +178,9 @@ int screen_move_cursor(const struct screen_row *rows, int count, int cursor, uin
 void screen_draw_buttons(const char *text)
 {
   int columns, rows, column, row;
+  release_buttons();
   CON_GetMetrics(&columns, &rows);
   CON_GetPosition(&column, &row);
-  buttons_held = false;
 
   // Scroll the body up when it reaches into the bottom rows
   int overlap = row - (rows - BOTTOM_ROWS);
@@ -213,25 +225,13 @@ void screen_draw_row_buttons(const struct screen_row *row, const char *action, c
 
 void screen_hold_buttons(const char *text)
 {
-  screen_draw_buttons(text);
-  move_to_row(body_row);
-  buttons_held = true;
-}
-
-void screen_make_room(void)
-{
-  int columns, rows, column, row;
+  int columns, rows;
   CON_GetMetrics(&columns, &rows);
-  CON_GetPosition(&column, &row);
-  if (!buttons_held || row < rows - BOTTOM_ROWS)
-    return;
+  screen_draw_buttons(text);
 
-  // Blank the body, leaving the last column alone so the console does not scroll, and start again at its top
-  for (int i = body_row; i < rows - BOTTOM_ROWS; i++) {
-    move_to_row(i);
-    printf("%*s", columns - 1, "");
-  }
-  move_to_row(body_row);
+  // Limit printing to the body, so it scrolls under the header and above the hints
+  consoleSetWindow(NULL, 1, body_row, columns, rows - BOTTOM_ROWS - body_row);
+  buttons_held = true;
 }
 
 bool screen_confirm(const char *path, const char *question, const char *verb)

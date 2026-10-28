@@ -70,6 +70,9 @@ static int rows_in_test;
 // The running step's row is on screen with no line end yet
 static bool row_open;
 
+// The starting line is on screen, waiting for the first output to take its place
+static bool starting_shown;
+
 // Name of the running step, for its progress
 static char running_name[24];
 
@@ -103,11 +106,16 @@ static void print_screen(const char *format, ...)
   vsnprintf(text, sizeof text, format, args);
   va_end(args);
 
+  // Clear the starting line, so the first output takes its place
+  if (starting_shown) {
+    starting_shown = false;
+    fputs("\r\x1b[2K", stdout);
+  }
+
   if (row_open) {
     row_open = false;
     fputs("\n", stdout);
   }
-  screen_make_room();
   fputs(text, stdout);
 }
 
@@ -249,6 +257,10 @@ void report_run(const char *name)
   rows_skipped = 0;
   row_open     = false;
   print_log("\nRUN  %s\n", name);
+
+  // Say the run is starting until a test prints
+  print_screen("%*s" CONSOLE_GRAY "Starting tests..." CONSOLE_RESET, MARK_COLUMN, "");
+  starting_shown = true;
 }
 
 void report_test_start(const char *name)

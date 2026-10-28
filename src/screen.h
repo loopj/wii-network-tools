@@ -53,9 +53,6 @@ void screen_draw_row_buttons(const struct screen_row *row, const char *action, c
 // Draw the button hints and return to the top of the body, for a body that prints as it runs
 void screen_hold_buttons(const char *text);
 
-// Start the body again at its top once it fills, called before each line of a body that prints as it runs
-void screen_make_room(void);
-
 // Show a question in the body and return true when the user answers A with the verb, false on B
 bool screen_confirm(const char *path, const char *question, const char *verb);
 
