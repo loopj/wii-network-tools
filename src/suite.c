@@ -124,9 +124,9 @@ void suite_menu_open(const char *title, const struct suite *suites, size_t count
 
     run_suite(title, suite, connection);
 
-    // Keep the results on screen until A
-    screen_draw_buttons("A Back");
-    input_wait_for(INPUT_A);
+    // Keep the results on screen until B, or A
+    screen_draw_buttons("B Back");
+    input_wait_for(INPUT_A | INPUT_B);
     profile_request(0);
   }
 }
