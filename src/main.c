@@ -18,6 +18,12 @@
 // Address of the STUBHAXX signature in a loader's reload stub, which libogc's exit jumps to
 #define LOADER_STUB_SIGNATURE 0x80001804
 
+// Upper half of a disc title's ID
+#define DISC_TITLE_TYPE 0x00010000
+
+// Title ID of the System Menu
+#define SYSTEM_MENU_TITLE_ID 0x0000000100000002ull
+
 // Rows of the top menu, in screen order
 enum entry {
   ENTRY_CONNECTIONS,
@@ -36,6 +42,9 @@ static const struct screen_row entry_rows[ENTRY_COUNT] = {
   {SCREEN_ROW_ACTION, "Options", NULL},
   {SCREEN_ROW_ACTION, "Exit", NULL},
 };
+
+// The System Menu's ticket view, aligned for ES
+static tikview system_menu_view __attribute__((aligned(32)));
 
 // Set up the video mode and a text console on the screen
 static void init_video(void)
@@ -57,6 +66,21 @@ static void init_video(void)
   VIDEO_WaitVSync();
   if (video_mode->viTVMode & VI_NON_INTERLACE)
     VIDEO_WaitVSync();
+}
+
+// The app runs as a disc title rather than from the Homebrew Channel
+static bool is_disc_title(void)
+{
+  u64 title_id;
+  return ES_GetTitleID(&title_id) >= 0 && (title_id >> 32) == DISC_TITLE_TYPE;
+}
+
+// Launch the System Menu with its ticket view, like a game's OSReturnToMenu
+static void launch_system_menu(void)
+{
+  // Read the System Menu's ticket view and launch it, which only returns on failure
+  if (ES_GetTicketViews(SYSTEM_MENU_TITLE_ID, &system_menu_view, 1) >= 0)
+    ES_LaunchTitle(SYSTEM_MENU_TITLE_ID, &system_menu_view);
 }
 
 // Stay on the IOS the loader booted rather than the one libogc would reload, so the tests run where a game would
@@ -111,8 +135,12 @@ int main(void)
         if (IOS_Open(DOLPHIN_DEVICE, 0) >= 0)
           SYS_ResetSystem(SYS_POWEROFF, 0, 0);
 
-        // Return to a loader that left its reload stub, and otherwise to the Wii Menu, since a disc has no stub
-        if (memcmp((const void *)LOADER_STUB_SIGNATURE, "STUBHAXX", 8) == 0)
+        // Launch the System Menu as a disc, like a game
+        if (is_disc_title())
+          launch_system_menu();
+
+        // Return to a loader's reload stub, except as a disc, which sees the stale stub the Homebrew Channel left
+        if (!is_disc_title() && memcmp((const void *)LOADER_STUB_SIGNATURE, "STUBHAXX", 8) == 0)
           return 0;
         SYS_ResetSystem(SYS_RETURNTOMENU, 0, 0);
         break;
